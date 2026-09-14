@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       src_branch:
-        description: "FanchmWrt 源码分支"
+        description: "FanchmWrt 源码分支 (fanchmwrt-24.10.4 / fanchmwrt-25.12.2 / fanchmwrt-25.12.4 / openwrt-main)"
         required: false
-        default: "master"
+        default: "fanchmwrt-25.12.4"
       make_release:
         description: "编译完成后创建 Release"
         type: boolean
@@ -53,7 +53,7 @@ jobs:
       - name: 克隆 FanchmWrt 源码
         run: |
           df -hT $PWD
-          git clone --depth 1 -b "${{ github.event.inputs.src_branch || 'master' }}" $REPO_URL openwrt
+          git clone --depth 1 -b "${{ github.event.inputs.src_branch || 'fanchmwrt-25.12.4' }}" $REPO_URL openwrt
 
       - name: 更新并安装 feeds
         working-directory: openwrt
