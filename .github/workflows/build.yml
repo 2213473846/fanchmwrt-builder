@@ -1,12 +1,12 @@
-name: Build FanchmWrt (Redmi AX6 stock)
+name: Build LibWrt (Redmi AX6 stock)
 
 on:
   workflow_dispatch:
     inputs:
       src_branch:
-        description: "FanchmWrt 源码分支 (fanchmwrt-24.10.4 / fanchmwrt-25.12.2 / fanchmwrt-25.12.4 / openwrt-main)"
+        description: "LibWrt 源码分支"
         required: false
-        default: "fanchmwrt-25.12.4"
+        default: "25.12-nss"
       make_release:
         description: "编译完成后创建 Release"
         type: boolean
@@ -14,7 +14,7 @@ on:
         default: false
 
 env:
-  REPO_URL: https://github.com/fanchmwrt/fanchmwrt
+  REPO_URL: https://github.com/laipeng668/LibWrt
   CONFIG_FILE: .config
 
 permissions:
@@ -50,10 +50,10 @@ jobs:
             python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig \
             texinfo unzip vim wget xmlto xxd zlib1g-dev zstd
 
-      - name: 克隆 FanchmWrt 源码
+      - name: 克隆 LibWrt 源码
         run: |
           df -hT $PWD
-          git clone --depth 1 -b "${{ github.event.inputs.src_branch || 'fanchmwrt-25.12.4' }}" $REPO_URL openwrt
+          git clone --depth 1 -b "${{ github.event.inputs.src_branch || '25.12-nss' }}" $REPO_URL openwrt
 
       - name: 更新并安装 feeds
         working-directory: openwrt
@@ -90,21 +90,21 @@ jobs:
           find bin/targets/ -type f \( -name "*.bin" -o -name "*.img" -o -name "*sha256sums*" \) -exec cp -f {} ./artifact/firmware/ \; || true
           cp -f .config ./artifact/firmware/.config.bak || true
           cp -f build_info.txt ./artifact/firmware/ 2>/dev/null || true
-          cd ./artifact/firmware && zip -qr ../../FanchmWrt-firmware.zip . && cd ../..
+          cd ./artifact/firmware && zip -qr ../../LibWrt-firmware.zip . && cd ../..
 
       - name: 上传 Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FanchmWrt-firmware
-          path: openwrt/FanchmWrt-firmware.zip
+          name: LibWrt-firmware
+          path: openwrt/LibWrt-firmware.zip
           retention-days: 7
 
       - name: 创建 Release
         if: ${{ github.event.inputs.make_release == 'true' }}
         uses: ncipollo/release-action@v1
         with:
-          tag: fanchmwrt-${{ github.run_id }}
-          name: FanchmWrt Redmi AX6 stock ${{ github.run_number }}
+          tag: libwrt-${{ github.run_id }}
+          name: LibWrt Redmi AX6 stock ${{ github.run_number }}
           allowUpdates: true
-          artifacts: openwrt/FanchmWrt-firmware.zip
+          artifacts: openwrt/LibWrt-firmware.zip
           token: ${{ secrets.GITHUB_TOKEN }}
