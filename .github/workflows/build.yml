@@ -1,0 +1,110 @@
+name: Build FanchmWrt (Redmi AX6 stock)
+
+on:
+  workflow_dispatch:
+    inputs:
+      src_branch:
+        description: "FanchmWrt 源码分支"
+        required: false
+        default: "master"
+      make_release:
+        description: "编译完成后创建 Release"
+        type: boolean
+        required: false
+        default: false
+
+env:
+  REPO_URL: https://github.com/fanchmwrt/fanchmwrt
+  CONFIG_FILE: .config
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+
+    steps:
+      - name: 检出本仓库（含 .config）
+        uses: actions/checkout@v4
+
+      - name: 释放磁盘空间
+        run: |
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force > /dev/null 2>&1 || true
+          sudo -E apt-get -y purge azure-cli ghc* zulu* llvm* firefox google* dotnet* powershell openjdk* mongodb* moby* || true
+          df -hT
+
+      - name: 安装编译依赖
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo -E apt-get -y update
+          sudo -E apt-get -y install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib \
+            g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 libelf-dev \
+            libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libncurses5-dev \
+            libncursesw5 libpython3-dev libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz \
+            mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply \
+            python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig \
+            texinfo uglify-js unzip vim wget xmlto xxd zlib1g-dev zstd
+
+      - name: 克隆 FanchmWrt 源码
+        run: |
+          df -hT $PWD
+          git clone --depth 1 -b "${{ github.event.inputs.src_branch || 'master' }}" $REPO_URL openwrt
+
+      - name: 更新并安装 feeds
+        working-directory: openwrt
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: 载入 .config
+        run: |
+          cp -f "$CONFIG_FILE" openwrt/.config
+          cd openwrt
+          make defconfig
+          grep -E "TARGET_PROFILE|NSS" .config || true
+
+      - name: 下载软件包
+        working-directory: openwrt
+        run: |
+          make download -j8
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
+
+      - name: 编译固件
+        working-directory: openwrt
+        run: |
+          echo -e "$(nproc) 线程开始编译"
+          make -j$(nproc) || make -j1 V=s
+          echo "编译完成时间: $(date)" >> build_info.txt
+          df -hT
+
+      - name: 整理产物
+        run: |
+          cd openwrt
+          mkdir -p ./artifact/firmware
+          find bin/targets/ -type f \( -name "*.bin" -o -name "*.img" -o -name "*sha256sums*" \) -exec cp -f {} ./artifact/firmware/ \; || true
+          cp -f .config ./artifact/firmware/.config.bak || true
+          cp -f build_info.txt ./artifact/firmware/ 2>/dev/null || true
+          cd ./artifact/firmware && zip -qr ../../FanchmWrt-firmware.zip . && cd ../..
+
+      - name: 上传 Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FanchmWrt-firmware
+          path: openwrt/FanchmWrt-firmware.zip
+          retention-days: 7
+
+      - name: 创建 Release
+        if: ${{ github.event.inputs.make_release == 'true' }}
+        uses: ncipollo/release-action@v1
+        with:
+          tag: fanchmwrt-${{ github.run_id }}
+          name: FanchmWrt Redmi AX6 stock ${{ github.run_number }}
+          allowUpdates: true
+          artifacts: openwrt/FanchmWrt-firmware.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
